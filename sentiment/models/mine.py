@@ -9,12 +9,12 @@ class MINE(nn.Module):
         super(MINE, self).__init__()
 
         self.sentence_kernel = nn.Sequential(
-            nn.Linear(32, 32),
+            nn.Linear(64, 32),
             nn.Tanh()
         )
 
         self.context_kernel = nn.Sequential(
-            nn.Linear(16, 32),
+            nn.Linear(32, 32),
             nn.Tanh()
         )
 

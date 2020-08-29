@@ -16,7 +16,7 @@ class SentenceEncoder(nn.Module):
         self.encoder = nn.LSTM(
             input_size=200,
             hidden_size=32,
-            num_layers=1,
+            num_layers=2,
             batch_first=True,
         )
 

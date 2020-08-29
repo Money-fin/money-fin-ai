@@ -77,6 +77,9 @@ coverage.xml
 .pytest_cache/
 pytestdebug.log
 
+**/*.swp
+financial/
+
 # Translations
 *.mo
 *.pot

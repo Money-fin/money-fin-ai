@@ -1,39 +1,75 @@
 import sys
-import signal
-from subscriber import Subscriber
+import torch
+from kafka_helper import KafkaHelper
 from config import *
+from embedding import Embedding
+from sentiment.models import SentimentPredictor
+
+stop = False
 
 
-subscribers = None
-publishers = None
+def predict_sentiment_with_contents(model, sentences):
+    embeddeds = []
 
+    for sen in sentences:
+        try:
+            embedded = Embedding.get_sentiment_vector(sen).cuda().detach()
+            embeddeds.append(embedded)
+        except:
+            continue
+            
+    embeddeds = torch.stack(embeddeds, dim=0)
+    embeddeds = embeddeds.view(1, *embeddeds.size())
+
+    pred = model(embeddeds)
+    return pred.detach().cpu().numpy()[0, 0]
+
+
+def predict_sentiment_with_title(model, title):
+    embedded = Embedding.get_sentiment_vector(title).cuda().detach()
+    pred = model(embedded.view(1, -1))
+    return pred.detach().cpu().numpy()[0, 0]
+    
 
 def main():
-    global subscribers, publishers
+    classification_model = None
+    # sentiment_model = torch.load("sentiment/ckpts/sentiment_clf3.pt").cuda().eval()
+    sentiment_model = torch.load("sentiment/ckpts/sentiment_clf-with-contents.pt").cuda().eval()
 
-    signal.signal(signal.SIGINT, sighandler)
+    while stop is False:
+        data = KafkaHelper.consume_ninput()
+        title = data["title"]
+        contents = data["content"]
+        link = data["link"]
 
-    subscribers = {
-        "n_input": Subscriber("n_input", BUFFER_SIZE),
-        "f_input": Subscriber("f_input", BUFFER_SIZE),
-    }
-    publishers = {
-        "n_output": Publisher("n_output", BUFFER_SIZE),
-        "f_output": Publisher("f_output", BUFFER_SIZE),
-    }
+        print(f"[INFO] News title: {title}")
+        print(f"[INFO] News link: {link}")
 
-def sighandler(signum, frame):
-    print(f"[INFO] All subscribers and publishers are shutting down...")
-    
-    for sub in subscribers:
-        sub.stop()
-        sub.close()
+        sentences = split_sentence(contents)
+        pred = predict_sentiment_with_contents(sentiment_model, sentences)
+        print(f"[INFO] Score: {pred:.2f}")
 
-    for pub in publishers:
-        pub.stop()
-        pub.close()
+        # pred = predict_sentiment_with_title(sentiment_model, title)
 
-    print(f"[INFO] All subscribers and publishers are shutdowned")
+        if pred < 0.5:
+            pred = 0
+        else:
+            pred = 1
+        print(f"[INFO] Prediction: {pred}")
+
+        # produce message to kafka
+        KafkaHelper.pub_noutput({
+            "title": title,
+            "link": link,
+            "result": pred
+        })
+
+
+def split_sentence(contents):
+    # print(len(contents))
+    # contents = "".join(contents)
+    sentences = contents.split(".")
+    return sentences
 
 
 if __name__ == "__main__":
